@@ -24,7 +24,7 @@ These are examples of how to use TransitInject functions.
 ### Downloading light curves from K2
 Download csv file of campaign targets from https://keplerscience.arc.nasa.gov/k2-approved-programs.html
 
-Run getfiles.py after editing the script to contain the desired proposal numbers. Currently the file is configured to download all M dwarfs from campaigns 1-3.
+Run getfiles.py after editing the script to contain the desired proposal numbers. Currently the file is configured to download all of Andrew Vanderburg's M dwarf light curves (K2 systematics removed) from campaigns 1-3.
 
 ### Injecting transits into downloaded K2 light curves
 Create list of targets to be injected with transits.
