@@ -6,10 +6,12 @@ import ldtk
 from scipy.interpolate import interp1d
 from joblib import Parallel, delayed
 import random
+import glob
+import os
 
 
 def planet_gen(target):
-    G = 2942.  # R_sun^3/M_sun/day^2
+    G = 2957.4493  # R_sun^3/M_sun/day^2
     t0 = random.uniform(min(target.time), max(target.time))
     P = 10.**random.uniform(np.log10(0.5), np.log10(30))
     rad = random.uniform(0.5, 4)
@@ -19,7 +21,7 @@ def planet_gen(target):
     params.t0 = t0
     params.per = P
     params.rp = rad / 109. / target.radius
-    params.a = (P ** 2 * G * target.mass / (4 * np.pi ** 2)) ** (1. / 3.)
+    params.a = (P ** 2 * G * target.mass / (4 * np.pi ** 2)) ** (1. / 3.) / target.radius  # in units of stellar rad
     params.inc = (180. / np.pi) * np.arccos(1. / params.a * b)
     params.ecc = 0
     params.w = 90
@@ -111,10 +113,19 @@ class Target:
                 planet_gen(self)
 
 
+def main(epic):
+    target = Target(epic)
+    target.inject_transit()
+
+
 if __name__ == '__main__':
     stars = np.loadtxt('k2/k2mdwarfs/mdwarfs.ls')
+
     for epic in stars:
-        target = Target(epic)
-        target.inject_transit()
+        old = glob.glob('k2/injected/' + epic + '*.txt')
+        for f in old:
+            os.remove(f)
+
+        main(epic)
 
 
