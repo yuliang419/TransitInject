@@ -13,7 +13,7 @@ import os
 def planet_gen(target, outdir):
     G = 2957.4493  # R_sun^3/M_sun/day^2
     t0 = random.uniform(min(target.time), max(target.time))
-    P = 10.**random.uniform(np.log10(0.5), np.log10(30))
+    P = 10.**random.uniform(np.log10(0.5), np.log10(80))
     rad = random.uniform(0.5, 4)
     b = random.uniform(0.01, 1)
 
@@ -34,11 +34,11 @@ def planet_gen(target, outdir):
 
     n_ev = 25
     n_tot = n_ev * n_pt
-    dt_new = np.zeros(n_tot)
+    dt_new = np.array([])
 
     for i, this_t in enumerate(target.time):
-        for i_ev in range(0, n_ev - 1):
-            dt_new[i * n_ev + i_ev] = this_t + 1.0 / n_ev * cad * (i_ev - np.ceil(n_ev / 2))
+        temp = this_t + 1.0 / n_ev * cad * (np.arange(n_ev) - np.ceil(n_ev / 2))
+        dt_new = np.append(dt_new, temp)
 
     m = batman.TransitModel(params, dt_new)
     model = m.light_curve(params)
@@ -65,10 +65,10 @@ class Target:
             print 'Error: Target does not exist'
             return
 
-        numpts = 2*24*30  # 30-day cadence
-        self.time = t[:numpts]
-        self.rawflux = f[:numpts]
-        self.flux = newf[:numpts]
+        # numpts = 2*24*30  # 30-day campaign
+        self.time = t
+        self.rawflux = f
+        self.flux = newf  #[:numpts]
         self.radius = 0.5
         self.Teff = 4000
         self.logg = 4
@@ -125,7 +125,7 @@ class Target:
         """
 
         if multi:
-            Parallel(n_jobs=2)(delayed(planet_gen)(self, outdir) for _ in range(2000))
+            Parallel(n_jobs=4)(delayed(planet_gen)(self, outdir) for _ in range(2000))
         else:
             for _ in range(2000):
                 planet_gen(self, outdir)
