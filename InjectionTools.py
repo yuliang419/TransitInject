@@ -10,7 +10,7 @@ import glob
 import os
 
 
-def planet_gen(target):
+def planet_gen(target, outdir):
     G = 2957.4493  # R_sun^3/M_sun/day^2
     t0 = random.uniform(min(target.time), max(target.time))
     P = 10.**random.uniform(np.log10(0.5), np.log10(30))
@@ -27,10 +27,28 @@ def planet_gen(target):
     params.w = 90
     params.limb_dark = 'quadratic'
     params.u = [target.u1, target.u2]
-    m = batman.TransitModel(params, target.time)
+
+    # oversample
+    cad = 29.4 / 60. / 24.  # cadence in days
+    n_pt = len(target.time)
+
+    n_ev = 25
+    n_tot = n_ev * n_pt
+    dt_new = np.zeros(n_tot)
+
+    for i, this_t in enumerate(target.time):
+        for i_ev in range(0, n_ev - 1):
+            dt_new[i * n_ev + i_ev] = this_t + 1.0 / n_ev * cad * (i_ev - np.ceil(n_ev / 2))
+
+    m = batman.TransitModel(params, dt_new)
     model = m.light_curve(params)
-    mod_lc = target.rawflux * model
-    np.savetxt('k2/injected/' + target.epic + '_%.2f_ %.2f_%.2f_%.2f.txt' % (t0, P, rad, b),
+    model_oversamp = []
+    for i in range(0, len(target.time)):
+        mean_f = np.mean(model[i * n_ev:i * n_ev + n_ev - 1])
+        model_oversamp.append(mean_f)
+
+    mod_lc = target.rawflux * np.array(model_oversamp)
+    np.savetxt(outdir + target.epic + '_%.2f_ %.2f_%.2f_%.2f.txt' % (t0, P, rad, b),
                np.transpose((target.time, mod_lc)),
                fmt='%.6f')
 
@@ -39,10 +57,10 @@ class Target:
     wave, through = np.loadtxt('kepler_response_lowres1.txt', unpack=True, skiprows=9)
     through *= 100.
 
-    def __init__(self, epic):
+    def __init__(self, epic, indir):
         self.epic = epic
         try:
-            t, f, newf = np.genfromtxt('k2/k2mdwarfs/'+epic+'_ltf.lc', unpack=True, usecols=(0, 1, 2))
+            t, f, newf = np.genfromtxt(indir+epic+'_ltf.lc', unpack=True, usecols=(0, 1, 2))
         except IOError:
             print 'Error: Target does not exist'
             return
@@ -99,7 +117,7 @@ class Target:
         self.u1 = u1[0][0]
         self.u2 = u2[0][0]
 
-    def inject_transit(self, multi=True):
+    def inject_transit(self, outdir, multi=True):
         """
         Inject 2000 transits per star, with randomly selected parameters.
         :param multi: if True, loops will be executed in parallel.
@@ -107,25 +125,27 @@ class Target:
         """
 
         if multi:
-            Parallel(n_jobs=2)(delayed(planet_gen)(self) for _ in range(2000))
+            Parallel(n_jobs=2)(delayed(planet_gen)(self, outdir) for _ in range(2000))
         else:
             for _ in range(2000):
-                planet_gen(self)
+                planet_gen(self, outdir)
 
 
-def main(epic):
-    target = Target(epic)
-    target.inject_transit()
+def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/'):
+    target = Target(epic, indir)
+    target.inject_transit(outdir=outdir)
 
 
 if __name__ == '__main__':
-    stars = np.loadtxt('k2/k2mdwarfs/mdwarfs.ls')
+    indir = 'k2/k2mdwarfs/'
+    outdir = 'k2/injected/'
+    stars = np.loadtxt(indir + 'mdwarfs.ls')
 
     for epic in stars:
-        old = glob.glob('k2/injected/' + epic + '*.txt')
+        old = glob.glob(outdir + epic + '*.txt')
         for f in old:
             os.remove(f)
 
-        main(epic)
+        main(epic, indir, outdir)
 
 
