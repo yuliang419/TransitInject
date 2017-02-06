@@ -30,10 +30,7 @@ def planet_gen(target, outdir):
 
     # oversample
     cad = 29.4 / 60. / 24.  # cadence in days
-    n_pt = len(target.time)
-
     n_ev = 25
-    n_tot = n_ev * n_pt
     dt_new = np.array([])
 
     for i, this_t in enumerate(target.time):
@@ -60,7 +57,7 @@ class Target:
     def __init__(self, epic, indir):
         self.epic = epic
         try:
-            t, f, newf = np.genfromtxt(indir+epic+'_ltf.lc', unpack=True, usecols=(0, 1, 2))
+            t, f = np.genfromtxt(indir+epic+'.txt', unpack=True, usecols=(0, 1), comments='#')
         except IOError:
             print 'Error: Target does not exist'
             return
@@ -68,7 +65,6 @@ class Target:
         # numpts = 2*24*30  # 30-day campaign
         self.time = t
         self.rawflux = f
-        self.flux = newf  #[:numpts]
         self.radius = 0.5
         self.Teff = 4000
         self.logg = 4
@@ -120,6 +116,7 @@ class Target:
     def inject_transit(self, outdir, multi=True):
         """
         Inject 2000 transits per star, with randomly selected parameters.
+        :param outdir: directory to save output.
         :param multi: if True, loops will be executed in parallel.
         :return:
         """
