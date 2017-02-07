@@ -10,7 +10,6 @@ This is a set of tools that allow users to download and select M dwarf light cur
     pandas 0.19.1
     ldtk
     batman 0.9.0
-    random
     urllib 1.17
     lxml
     FFITools
