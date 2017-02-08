@@ -28,7 +28,6 @@ for camp in targlist:
 
 	mdwarfs = np.append(mdwarfs, good_md)
 
-filenames = [mdwarfs[i]+'.txt' for i in range(len(mdwarfs))]
-np.savetxt('k2/k2mdwarfs/mdwarfs.ls', filenames, fmt='%10s')
+np.savetxt('k2/k2mdwarfs/mdwarfs.ls', mdwarfs, fmt='%10s')
 
 

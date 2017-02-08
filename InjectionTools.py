@@ -96,11 +96,14 @@ class Target:
 
         self.radius = float(params[2])
         self.logg = float(params[1])
+        if self.logg > 5:
+            self.logg = 4.99  # ldtk can't handle logg >= 5
         self.Teff = float(params[0])
         self.z = float(params[6])
         self.mass = float(params[8])
 
     def get_ld(self):
+        print self.Teff, self.logg, self.z
         f = interp1d(self.wave, self.through)
         wave_hires = np.linspace(min(self.wave), max(self.wave), 500, endpoint=True)
         through_hires = f(wave_hires)
@@ -129,20 +132,24 @@ class Target:
 
 
 def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/'):
-    target = Target(epic, indir)
+    try:
+        target = Target(epic, indir)
+    except ValueError:
+        print 'Invalid stellar parameters'
+        return
     target.inject_transit(outdir=outdir)
 
 
 if __name__ == '__main__':
     indir = 'k2/k2mdwarfs/'
     outdir = 'k2/injected/'
-    stars = np.loadtxt(indir + 'mdwarfs.ls')
+    stars = np.loadtxt(indir + 'mdwarfs.ls', dtype='S9')
 
     for epic in stars:
         old = glob.glob(outdir + epic + '*.txt')
         for f in old:
             os.remove(f)
-
+        print 'Working on star', epic
         main(epic, indir, outdir)
 
 
