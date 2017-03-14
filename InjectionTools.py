@@ -7,26 +7,15 @@ from scipy.interpolate import interp1d
 from joblib import Parallel, delayed
 import random
 import glob
+import matplotlib.pyplot as plt
 import os
 
 
-def planet_gen(target, outdir):
+def planet_gen(target, outdir, model='mandelagol', return_lc=False):
     G = 2957.4493  # R_sun^3/M_sun/day^2
     t0 = random.uniform(min(target.time), max(target.time))
     P = 10.**random.uniform(np.log10(0.5), np.log10(80))
     rad = random.uniform(0.5, 4)
-    b = random.uniform(0.01, 1)
-
-    params = batman.TransitParams()
-    params.t0 = t0
-    params.per = P
-    params.rp = rad / 109. / target.radius
-    params.a = (P ** 2 * G * target.mass / (4 * np.pi ** 2)) ** (1. / 3.) / target.radius  # in units of stellar rad
-    params.inc = (180. / np.pi) * np.arccos(1. / params.a * b)
-    params.ecc = 0
-    params.w = 90
-    params.limb_dark = 'quadratic'
-    params.u = [target.u1, target.u2]
 
     # oversample
     cad = 29.4 / 60. / 24.  # cadence in days
@@ -37,18 +26,59 @@ def planet_gen(target, outdir):
         temp = this_t + 1.0 / n_ev * cad * (np.arange(n_ev) - np.ceil(n_ev / 2))
         dt_new = np.append(dt_new, temp)
 
-    m = batman.TransitModel(params, dt_new)
-    model = m.light_curve(params)
+    if model == 'mandelagol':
+        b = random.uniform(0.01, 1)
+
+        params = batman.TransitParams()
+        params.t0 = t0
+        params.per = P
+        params.rp = rad / 109. / target.radius
+        params.a = (P ** 2 * G * target.mass / (4 * np.pi ** 2)) ** (1. / 3.) / target.radius  # in units of stellar rad
+        params.inc = (180. / np.pi) * np.arccos(1. / params.a * b)
+        params.ecc = 0
+        params.w = 90
+        params.limb_dark = 'quadratic'
+        params.u = [target.u1, target.u2]
+        m = batman.TransitModel(params, dt_new)
+        model_lc = m.light_curve(params)
+
+    elif model == 'box':
+        a_Rs = (P ** 2 * G * target.mass / (4 * np.pi ** 2)) ** (1. / 3.) / target.radius
+        depth = (rad / 109. / target.radius)**2
+        dur = P / np.pi / a_Rs  # characteristic transit duration
+        start = -np.floor((t0-target.time[0])/P)
+        end = np.floor((target.time[-1]-t0)/P)
+        midpts = t0 + np.arange(start, end)*P
+
+        model_lc = np.ones(len(dt_new))
+
+        for pt in midpts:
+            now = np.where((dt_new > pt-dur/2) & (dt_new < pt+dur/2))
+            model_lc[now] -= depth
+    else:
+        raise ValueError('Invalid transit model')
+
     model_oversamp = []
     for i in range(0, len(target.time)):
-        mean_f = np.mean(model[i * n_ev:i * n_ev + n_ev - 1])
+        mean_f = np.mean(model_lc[i * n_ev:i * n_ev + n_ev - 1])
         model_oversamp.append(mean_f)
 
     mod_lc = target.rawflux * np.array(model_oversamp)
-    np.savetxt(outdir + target.epic + '_%.2f_ %.2f_%.2f_%.2f.txt' % (t0, P, rad, b),
-               np.transpose((target.time, mod_lc)),
-               fmt='%.6f')
-
+    if np.isnan(np.mean(mod_lc)):
+        print 'failed: ', str(target.epic)
+        with open('errlog.txt', 'a') as f:
+            print>>f, target.epic
+    else:
+        if model == 'mandelagol':
+            np.savetxt(outdir + target.epic + '_%.2f_%.2f_%.2f_%.2f.txt' % (t0, P, rad, b),
+                   np.transpose((target.time, mod_lc)),
+                   fmt='%.6f')
+        elif model == 'box':
+            np.savetxt(outdir + target.epic + '_%.2f_%.2f_%.2f.txt' % (t0, P, rad),
+                       np.transpose((target.time, mod_lc)),
+                       fmt='%.6f')
+    if return_lc:
+        return mod_lc
 
 class Target:
     wave, through = np.loadtxt('kepler_response_lowres1.txt', unpack=True, skiprows=9)
@@ -116,7 +146,7 @@ class Target:
         self.u1 = u1[0][0]
         self.u2 = u2[0][0]
 
-    def inject_transit(self, outdir, multi=True):
+    def inject_transit(self, outdir, multi=True, model='mandelagol'):
         """
         Inject 2000 transits per star, with randomly selected parameters.
         :param outdir: directory to save output.
@@ -125,24 +155,35 @@ class Target:
         """
 
         if multi:
-            Parallel(n_jobs=4)(delayed(planet_gen)(self, outdir) for _ in range(2000))
+            Parallel(n_jobs=4)(delayed(planet_gen)(self, outdir, model) for _ in range(2000))
         else:
             for _ in range(2000):
-                planet_gen(self, outdir)
+                planet_gen(self, outdir, model)
 
 
-def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/'):
+def test(epic, indir='k2/k2mdwarfs/', outdir='k2/box/injected/', model='box'):
     try:
         target = Target(epic, indir)
     except ValueError:
         print 'Invalid stellar parameters'
         return
-    target.inject_transit(outdir=outdir)
+    flux = planet_gen(target, outdir, model, return_lc=True)
+    plt.plot(target.time, flux, 'b.')
+    plt.show()
+
+
+def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='mandelagol'):
+    try:
+        target = Target(epic, indir)
+    except ValueError:
+        print 'Invalid stellar parameters'
+        return
+    target.inject_transit(outdir=outdir, multi=multi, model=model)
 
 
 if __name__ == '__main__':
     indir = 'k2/k2mdwarfs/'
-    outdir = 'k2/injected/'
+    outdir = 'k2/box/injected/'
     stars = np.loadtxt(indir + 'mdwarfs.ls', dtype='S9')
 
     for epic in stars:
@@ -150,6 +191,6 @@ if __name__ == '__main__':
         for f in old:
             os.remove(f)
         print 'Working on star', epic
-        main(epic, indir, outdir)
+        main(epic, indir, outdir, model='box')
 
 
