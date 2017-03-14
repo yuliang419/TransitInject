@@ -90,7 +90,7 @@ class Target:
             t, f = np.genfromtxt(indir+epic+'.txt', unpack=True, usecols=(0, 1), comments='#')
         except IOError:
             print 'Error: Target does not exist'
-            return
+            raise
 
         # numpts = 2*24*30  # 30-day campaign
         self.time = t
@@ -104,6 +104,7 @@ class Target:
         self.u2 = 0.3
         self.get_info()
         self.get_ld()
+
 
     def get_info(self):
         url = "https://exofop.ipac.caltech.edu/k2/edit_target.php?id="+self.epic+"#files"
@@ -122,7 +123,7 @@ class Target:
 
         except IndexError:
             print 'Stellar parameters not available on EXOFOP'
-            return
+            raise
 
         self.radius = float(params[2])
         self.logg = float(params[1])
@@ -155,7 +156,7 @@ class Target:
         """
 
         if multi:
-            Parallel(n_jobs=4)(delayed(planet_gen)(self, outdir, model) for _ in range(2000))
+            Parallel(n_jobs=16)(delayed(planet_gen)(self, outdir, model) for _ in range(2000))
         else:
             for _ in range(2000):
                 planet_gen(self, outdir, model)
@@ -175,8 +176,17 @@ def test(epic, indir='k2/k2mdwarfs/', outdir='k2/box/injected/', model='box'):
 def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='mandelagol'):
     try:
         target = Target(epic, indir)
-    except ValueError:
+    except (ValueError, IndexError):
         print 'Invalid stellar parameters'
+        with open('errlog.txt', 'a') as f:
+            print>>f, epic
+        return
+    except TypeError:
+        print 'Unable to retrieve limb darkening parameters'
+        with open('errlog.txt', 'a') as f:
+            print>>f, epic
+        return
+    except IOError:
         return
     target.inject_transit(outdir=outdir, multi=multi, model=model)
 
