@@ -110,7 +110,7 @@ class Target:
         else:
             # crude approximation for Teff = 3500
             if self.z > 0:
-                sefl.u1 = 0.4
+                self.u1 = 0.4
                 self.u2 = 0.3
             elif self.z < 0:
                 self.u1 = 0.3

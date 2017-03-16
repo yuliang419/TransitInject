@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 def ifft(t, nu, re, im, N, m):
     ts = np.zeros(len(t))
     for s in range(len(nu)):
-        term = N*2 * (re[s] * np.cos(2 * np.pi * nu[s] * t) + im[s] * np.sin(2 * np.pi * nu[s] * t))
+        term = N/m * (re[s] * np.cos(2 * np.pi * nu[s] * t) - im[s] * np.sin(2 * np.pi * nu[s] * t))
         ts += term
 
     return ts
