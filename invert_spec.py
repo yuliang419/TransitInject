@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 def ifft(t, nu, re, im, N, m):
     ts = np.zeros(len(t))
     for s in range(len(nu)):
-        term = N / m * (re[s] * np.cos(2 * np.pi * nu[s] * t) + im[s] * np.sin(2 * np.pi * nu[s] * t))
+        term = N*2 * (re[s] * np.cos(2 * np.pi * nu[s] * t) + im[s] * np.sin(2 * np.pi * nu[s] * t))
         ts += term
 
     return ts
@@ -14,7 +14,8 @@ def ifft(t, nu, re, im, N, m):
 def get_spec(name, path='dft/'):
     nu_all, power, re, im = np.loadtxt(path + name + '.dftclean.dspec', unpack=True)
     m = float(len(nu_all))
-    nu = np.loadtxt()
+    # nu = np.loadtxt()
+    nu = nu_all
 
     return nu, power, re, im, m
 

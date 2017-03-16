@@ -9,6 +9,7 @@ import random
 import glob
 import matplotlib.pyplot as plt
 import os
+from scipy.spatial.qhull import QhullError
 
 
 def planet_gen(target, outdir, model='mandelagol', return_lc=False):
@@ -100,10 +101,20 @@ class Target:
         self.logg = 4
         self.z = 0
         self.mass = 0.5
-        self.u1 = 0.3
-        self.u2 = 0.3
+        # set these to 0.4 default. LDTk fails for Teff < 3600
+        self.u1 = 0.35
+        self.u2 = 0.35
         self.get_info()
-        self.get_ld()
+        if self.Teff > 3600:
+            self.get_ld()
+        else:
+            # crude approximation for Teff = 3500
+            if self.z > 0:
+                sefl.u1 = 0.4
+                self.u2 = 0.3
+            elif self.z < 0:
+                self.u1 = 0.3
+                self.u2 = 0.4
 
 
     def get_info(self):
@@ -181,7 +192,7 @@ def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='
         with open('errlog.txt', 'a') as f:
             print>>f, epic
         return
-    except TypeError:
+    except (QhullError, TypeError):
         print 'Unable to retrieve limb darkening parameters'
         with open('errlog.txt', 'a') as f:
             print>>f, epic
