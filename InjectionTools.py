@@ -15,7 +15,7 @@ from scipy.spatial.qhull import QhullError
 def planet_gen(target, outdir, model='mandelagol', return_lc=False):
     G = 2957.4493  # R_sun^3/M_sun/day^2
     t0 = random.uniform(min(target.time), max(target.time))
-    P = 10.**random.uniform(np.log10(0.5), np.log10(80))
+    P = 10.**random.uniform(np.log10(0.5), np.log10(30))
     rad = random.uniform(0.5, 4)
 
     # oversample
@@ -68,18 +68,23 @@ def planet_gen(target, outdir, model='mandelagol', return_lc=False):
     if np.isnan(np.mean(mod_lc)):
         print 'failed: ', str(target.epic)
         with open('errlog.txt', 'a') as f:
-            print>>f, target.epic
+            print>>f, target.epic, 'NaNValues'
     else:
         if model == 'mandelagol':
+            header = 't0    %.5f   P    %.5f  depth %.5f  b %.5f  Rs    %.5f    Rp  %5f' % (t0, P,
+                                            (rad / 109. / target.radius)**2, b, target.radius, rad)
             np.savetxt(outdir + target.epic + '_%.2f_%.2f_%.2f_%.2f.txt' % (t0, P, rad, b),
-                   np.transpose((target.time, mod_lc)),
+                   np.transpose((target.time, mod_lc)), header=header,
                    fmt='%.6f')
         elif model == 'box':
+            header = 't0    %.5f   P    %.5f  depth %.5f  Rs    %.5f    Rp  %5f  dur  %5f' % (t0, P,
+                                                                        depth, target.radius, rad, dur)
             np.savetxt(outdir + target.epic + '_%.2f_%.2f_%.2f.txt' % (t0, P, rad),
-                       np.transpose((target.time, mod_lc)),
+                       np.transpose((target.time, mod_lc)), header=header,
                        fmt='%.6f')
     if return_lc:
         return mod_lc
+
 
 class Target:
     wave, through = np.loadtxt('kepler_response_lowres1.txt', unpack=True, skiprows=9)
@@ -116,6 +121,7 @@ class Target:
                 self.u1 = 0.3
                 self.u2 = 0.4
 
+        print self.Teff, self.logg, self.z, self.u1, self.u2
 
     def get_info(self):
         url = "https://exofop.ipac.caltech.edu/k2/edit_target.php?id="+self.epic+"#files"
@@ -145,7 +151,6 @@ class Target:
         self.mass = float(params[8])
 
     def get_ld(self):
-        print self.Teff, self.logg, self.z
         f = interp1d(self.wave, self.through)
         wave_hires = np.linspace(min(self.wave), max(self.wave), 500, endpoint=True)
         through_hires = f(wave_hires)
@@ -190,12 +195,12 @@ def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='
     except (ValueError, IndexError):
         print 'Invalid stellar parameters'
         with open('errlog.txt', 'a') as f:
-            print>>f, epic
+            print>>f, epic, 'InvalidParam'
         return
     except (QhullError, TypeError):
         print 'Unable to retrieve limb darkening parameters'
         with open('errlog.txt', 'a') as f:
-            print>>f, epic
+            print>>f, epic, 'LDError'
         return
     except IOError:
         return
@@ -204,14 +209,27 @@ def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='
 
 if __name__ == '__main__':
     indir = 'k2/k2mdwarfs/'
-    outdir = 'k2/box/injected/'
+    outdir = 'k2/injected/'
     stars = np.loadtxt(indir + 'mdwarfs.ls', dtype='S9')
 
     for epic in stars:
-        old = glob.glob(outdir + epic + '*.txt')
-        for f in old:
-            os.remove(f)
-        print 'Working on star', epic
-        main(epic, indir, outdir, model='box')
+        # old = glob.glob(outdir + epic + '*.txt')
+        # for f in old:
+        #     os.remove(f)
+        # print 'Working on star', epic
+        # main(epic, indir, outdir, model='box')
+        try:
+            target = Target(epic, indir)
+        except (ValueError, IndexError):
+            print 'Invalid stellar parameters'
+            continue
+        except (QhullError, TypeError):
+            print 'Unable to retrieve limb darkening parameters'
+            continue
+        except IOError:
+            continue
 
+        if target.radius > 0.7:
+            with open('giants.txt', 'a') as out:
+                print>>out, epic
 
