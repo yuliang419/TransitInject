@@ -4,12 +4,17 @@ from lxml import etree
 import batman
 import ldtk
 from scipy.interpolate import interp1d
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 import random
-import glob
 import matplotlib.pyplot as plt
-import os
 from scipy.spatial.qhull import QhullError
+import multiprocessing
+import logging
+import sys
+
+
+def planet_gen_wrapper(args):
+    return planet_gen(*args)
 
 
 def planet_gen(target, outdir, model='mandelagol', return_lc=False):
@@ -67,8 +72,7 @@ def planet_gen(target, outdir, model='mandelagol', return_lc=False):
     mod_lc = target.rawflux * np.array(model_oversamp)
     if np.isnan(np.mean(mod_lc)):
         print 'failed: ', str(target.epic)
-        with open('errlog.txt', 'a') as f:
-            print>>f, target.epic, 'NaNValues'
+        logger.info('Planet injection failed: %s . Reason: NaN values', target.epic)
     else:
         if model == 'mandelagol':
             header = 't0    %.5f   P    %.5f  depth %.5f  b %.5f  Rs    %.5f    Rp  %5f' % (t0, P,
@@ -87,15 +91,15 @@ def planet_gen(target, outdir, model='mandelagol', return_lc=False):
 
 
 class Target:
-    wave, through = np.loadtxt('kepler_response_lowres1.txt', unpack=True, skiprows=9)
-    through *= 100.
 
     def __init__(self, epic, indir):
+        self.wave = wave
+        self.through = through
         self.epic = epic
         try:
             t, f = np.genfromtxt(indir+epic+'.txt', unpack=True, usecols=(0, 1), comments='#')
         except IOError:
-            print 'Error: Target does not exist'
+            logger.warning('Error: Target does not exist')
             raise
 
         # numpts = 2*24*30  # 30-day campaign
@@ -110,9 +114,25 @@ class Target:
         self.u1 = 0.35
         self.u2 = 0.35
         self.get_info()
+
+        if self.radius > 0.7:
+            logger.warning('Star %s is a giant', self.epic)
+            raise ValueError('Star is a giant')
+
         if self.Teff > 3600:
-            self.get_ld()
+            try:
+                self.get_ld()
+            except (QhullError, TypeError):
+                logger.info('Failed: %s. Reason: LDerror', epic)
+                if self.z > 0:
+                    self.u1 = 0.4
+                    self.u2 = 0.3
+                elif self.z < 0:
+                    self.u1 = 0.3
+                    self.u2 = 0.4
+        # ldtk sometimes gives TypeError for unknown reason
         else:
+            logger.info('Star %s has Teff < 3500K, using approximate LDCs', self.epic)
             # crude approximation for Teff = 3500
             if self.z > 0:
                 self.u1 = 0.4
@@ -121,7 +141,7 @@ class Target:
                 self.u1 = 0.3
                 self.u2 = 0.4
 
-        print self.Teff, self.logg, self.z, self.u1, self.u2
+        logger.info('%s %s %s %s %s', self.Teff, self.logg, self.z, self.u1, self.u2)
 
     def get_info(self):
         url = "https://exofop.ipac.caltech.edu/k2/edit_target.php?id="+self.epic+"#files"
@@ -172,7 +192,11 @@ class Target:
         """
 
         if multi:
-            Parallel(n_jobs=16)(delayed(planet_gen)(self, outdir, model) for _ in range(2000))
+            pool = multiprocessing.Pool(processes=10)
+            TASK = [(self, outdir, model) for _ in range(2000)]
+            pool.map(planet_gen_wrapper, TASK)
+
+            # Parallel(n_jobs=16)(delayed(planet_gen)(self, outdir, model) for _ in range(2000))
         else:
             for _ in range(2000):
                 planet_gen(self, outdir, model)
@@ -189,47 +213,45 @@ def test(epic, indir='k2/k2mdwarfs/', outdir='k2/box/injected/', model='box'):
     plt.show()
 
 
-def main(epic, indir='k2/k2mdwarfs/', outdir='k2/injected/', multi=True, model='mandelagol'):
+def main(epic, indir, outdir, multi=True, model='box'):
+
+    logger.info('Working on %s', epic)
     try:
         target = Target(epic, indir)
     except (ValueError, IndexError):
-        print 'Invalid stellar parameters'
-        with open('errlog.txt', 'a') as f:
-            print>>f, epic, 'InvalidParam'
+        logger.info('Failed: %s . Reason: InvalidParam', epic)
         return
-    except (QhullError, TypeError):
-        print 'Unable to retrieve limb darkening parameters'
-        with open('errlog.txt', 'a') as f:
-            print>>f, epic, 'LDError'
-        return
+    # except (TypeError):
+    #     logger.info('Failed: %s . Reason: TypeError', epic)
+    #     return
     except IOError:
         return
     target.inject_transit(outdir=outdir, multi=multi, model=model)
 
 
 if __name__ == '__main__':
+    wave, through = np.loadtxt('kepler_response_lowres1.txt', unpack=True, skiprows=9)
+    through *= 100.
+
     indir = 'k2/k2mdwarfs/'
-    outdir = 'k2/injected/'
+    outdir = '/nobackup1/yuliang/injected/'
+    # outdir = 'k2/injected/'
     stars = np.loadtxt(indir + 'mdwarfs.ls', dtype='S9')
 
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = multiprocessing.get_logger()
+    hdlr = logging.FileHandler('planet_injection.log', mode='w')
+    hdlr.setFormatter(formatter)
+    logger.addHandler(hdlr)
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.setLevel(logging.DEBUG)
+    logger.info('Process started')
     for epic in stars:
-        # old = glob.glob(outdir + epic + '*.txt')
-        # for f in old:
-        #     os.remove(f)
-        # print 'Working on star', epic
-        # main(epic, indir, outdir, model='box')
-        try:
-            target = Target(epic, indir)
-        except (ValueError, IndexError):
-            print 'Invalid stellar parameters'
-            continue
-        except (QhullError, TypeError):
-            print 'Unable to retrieve limb darkening parameters'
-            continue
-        except IOError:
-            continue
+        main(epic, indir, outdir, multi=True, model='box')
 
-        if target.radius > 0.7:
-            with open('giants.txt', 'a') as out:
-                print>>out, epic
+    # pool = multiprocessing.Pool(processes=2)
+    # TASK = [(stars[i], indir, outdir, False, 'box') for i in range(len(stars))]
+    # pool.map(main, TASK)
 
